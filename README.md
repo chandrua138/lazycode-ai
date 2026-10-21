@@ -116,3 +116,7 @@ Please read [CONTRIBUTING.md](CONTRIBUTING.md) before submitting changes.
 ## 📄 License
 
 No license has been specified yet. A license can be added when the project owner chooses one.
+
+## 📸 Screenshot
+
+![LazyCode AI Dashboard](screenshots/dashboard.png)
