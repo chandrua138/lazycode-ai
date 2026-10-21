@@ -8,10 +8,30 @@ LazyCode AI is a simple web application that explains source code in easy-to-und
 ## ✨ Features
 
 - Explain code in simple English.
-- Describe how code works.
-- Understand the output of code.
-- Run AI explanations using a local Ollama model.
-- Dark-themed, beginner-friendly web interface.
+- Describe how code works step by step.
+- Show the expected output and key concepts.
+- Run AI explanations using a local Ollama model (`qwen2.5-coder:3b`).
+- Professional dark developer dashboard: left navigation, central workspace, right history panel.
+- Code editor with syntax highlighting (CodeMirror) for 18 languages.
+- Explanation history saved in your browser (localStorage) — reopening and search included.
+- Real Ollama connection status in the top bar (never faked).
+- Ready-to-use code templates you can load into the editor.
+- Fully responsive for desktop, tablet, and mobile.
+
+## 🗂️ Project Structure
+
+```
+lazycode-ai/
+├── app.py                     # Flask backend (/, /explain, /api/status)
+├── templates/
+│   └── index.html             # Dashboard layout
+├── static/
+│   ├── style.css              # Dark theme styling
+│   ├── script.js              # Frontend logic, safe Markdown rendering, history
+│   └── vendor/codemirror/     # Vendored CodeMirror editor (works offline)
+├── README.md
+└── CONTRIBUTING.md
+```
 
 ## 🛠️ Technologies Used
 

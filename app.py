@@ -1,193 +1,97 @@
-from flask import Flask, request, jsonify
+from flask import Flask, jsonify, render_template, request
 import requests
 
 app = Flask(__name__)
 
+APP_VERSION = "1.2.0"
+
 OLLAMA_URL = "http://localhost:11434/api/generate"
+OLLAMA_TAGS_URL = "http://localhost:11434/api/tags"
 MODEL = "qwen2.5-coder:3b"
+
+PROMPT_TEMPLATE = (
+    "You are LazyCode AI, a friendly code-explainer for developers and students. "
+    "Explain the following {language} code so that a beginner can understand it "
+    "accurately and quickly.\n\n"
+    "Answer in plain Markdown using exactly these sections:\n"
+    "## Summary\n"
+    "One to three sentences describing what the code does.\n"
+    "## How it works\n"
+    "A numbered, step-by-step walkthrough of the important lines.\n"
+    "## Expected output\n"
+    "What the code prints or returns. If it produces no direct output, say so.\n"
+    "## Key concepts\n"
+    "A short bullet list of the important programming ideas used.\n\n"
+    "Rules: keep it concise and technically accurate. Do not rewrite the whole "
+    "program; only quote tiny snippets inside single backticks.\n\n"
+    "Code:\n"
+    "```{language}\n"
+    "{code}\n"
+    "```"
+)
 
 
 @app.route("/")
 def home():
-    return """
-    <!DOCTYPE html>
-    <html lang="en">
-    <head>
-        <meta charset="UTF-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>LazyCode AI</title>
+    return render_template("index.html", version=APP_VERSION, model=MODEL)
 
-        <style>
-            * {
-                box-sizing: border-box;
-            }
 
-            body {
-                margin: 0;
-                padding: 30px 16px;
-                background: #111827;
-                color: #f9fafb;
-                font-family: Arial, sans-serif;
-            }
+@app.route("/api/status")
+def status():
+    """Report the real Ollama connection state (never faked)."""
+    payload = {
+        "connected": False,
+        "model": MODEL,
+        "model_available": False,
+        "version": APP_VERSION,
+    }
 
-            main {
-                max-width: 800px;
-                margin: 40px auto;
-            }
+    try:
+        response = requests.get(OLLAMA_TAGS_URL, timeout=3)
+        response.raise_for_status()
+        data = response.json()
+    except (requests.RequestException, ValueError) as error:
+        app.logger.warning("Ollama status check failed: %s", error)
+        payload["error"] = "Ollama is not reachable on localhost:11434."
+        return jsonify(payload)
 
-            h1 {
-                color: #a78bfa;
-            }
+    models = [
+        entry.get("name", "")
+        for entry in data.get("models", [])
+        if isinstance(entry, dict)
+    ]
 
-            .subtitle {
-                color: #9ca3af;
-                line-height: 1.6;
-            }
+    base_model = MODEL.split(":")[0]
+    payload["connected"] = True
+    payload["model_available"] = any(
+        name == MODEL or name.split(":")[0] == base_model for name in models
+    )
 
-            textarea {
-                width: 100%;
-                min-height: 220px;
-                margin: 16px 0;
-                padding: 16px;
-                background: #1f2937;
-                color: #f9fafb;
-                border: 1px solid #4b5563;
-                border-radius: 10px;
-                font: 15px monospace;
-                resize: vertical;
-            }
-
-            button {
-                padding: 13px 22px;
-                background: #8b5cf6;
-                color: white;
-                border: 0;
-                border-radius: 8px;
-                font-size: 16px;
-                cursor: pointer;
-            }
-
-            button:disabled {
-                opacity: 0.6;
-                cursor: wait;
-            }
-
-            #result {
-                margin-top: 24px;
-                padding: 20px;
-                background: #1f2937;
-                border-radius: 10px;
-                line-height: 1.7;
-                white-space: pre-wrap;
-                overflow-wrap: anywhere;
-            }
-
-            .label {
-                color: #c4b5fd;
-            }
-
-            #answer {
-                overflow-wrap: anywhere;
-            }
-        </style>
-    </head>
-
-    <body>
-        <main>
-            <h1>LazyCode AI</h1>
-
-            <p class="subtitle">
-                Understand code easily with your local AI.
-                Paste your code below and let AI explain it.
-            </p>
-
-            <h3>Your code</h3>
-
-            <textarea id="code" placeholder="Paste your code here...">for i in range(3):
-    print(i)</textarea>
-
-            <button id="explainBtn" onclick="explainCode()">
-                Explain Code
-            </button>
-
-            <div id="result" hidden>
-                <strong class="label">AI Explanation</strong>
-                <p id="answer"></p>
-            </div>
-        </main>
-
-        <script>
-            async function explainCode() {
-                const code = document.getElementById("code").value;
-                const button = document.getElementById("explainBtn");
-                const result = document.getElementById("result");
-                const answer = document.getElementById("answer");
-
-                if (!code.trim()) {
-                    alert("Please enter some code first.");
-                    return;
-                }
-
-                button.disabled = true;
-                button.textContent = "Thinking...";
-                result.hidden = false;
-                answer.textContent = "AI is explaining your code...";
-
-                try {
-                    const response = await fetch("/explain", {
-                        method: "POST",
-                        headers: {
-                            "Content-Type": "application/json"
-                        },
-                        body: JSON.stringify({
-                            code: code
-                        })
-                    });
-
-                    const data = await response.json();
-
-                    if (!response.ok) {
-                        throw new Error(
-                            data.error || "Request failed."
-                        );
-                    }
-
-                    answer.textContent = data.explanation;
-
-                } catch (error) {
-                    answer.textContent = "Error: " + error.message;
-
-                } finally {
-                    button.disabled = false;
-                    button.textContent = "Explain Code";
-                }
-            }
-        </script>
-    </body>
-    </html>
-    """
+    return jsonify(payload)
 
 
 @app.route("/explain", methods=["POST"])
 def explain():
     data = request.get_json(silent=True) or {}
-    code = data.get("code", "").strip()
+    code = str(data.get("code") or "").strip()
+    language = str(data.get("language") or "").strip()[:40]
 
     if not code:
         return jsonify({
             "error": "Please enter some code."
         }), 400
 
+    prompt = PROMPT_TEMPLATE.format(
+        language=language or "this",
+        code=code,
+    )
+
     try:
         response = requests.post(
             OLLAMA_URL,
             json={
                 "model": MODEL,
-                "prompt": (
-                    "Explain this code in very simple English. "
-                    "Describe how it works and its output.\n\n"
-                    f"Code:\n{code}"
-                ),
+                "prompt": prompt,
                 "stream": False,
             },
             timeout=120,
@@ -195,10 +99,27 @@ def explain():
 
         response.raise_for_status()
         result = response.json()
+        explanation = (result.get("response") or "").strip()
+
+        if not explanation:
+            return jsonify({
+                "error": "The model returned an empty explanation. Please try again."
+            }), 502
 
         return jsonify({
-            "explanation": result["response"]
+            "explanation": explanation,
+            "model": MODEL,
+            "language": language or "text",
         })
+
+    except requests.exceptions.Timeout:
+        app.logger.error("Ollama request timed out")
+        return jsonify({
+            "error": (
+                "Ollama took too long to respond. "
+                "Try a shorter snippet or check that the model is loaded."
+            )
+        }), 504
 
     except requests.RequestException as error:
         app.logger.error("Ollama request failed: %s", error)
@@ -208,6 +129,13 @@ def explain():
                 "Could not contact Ollama. "
                 "Make sure Ollama is running and the model is available."
             )
+        }), 502
+
+    except (KeyError, TypeError, ValueError) as error:
+        app.logger.error("Unexpected Ollama response: %s", error)
+
+        return jsonify({
+            "error": "Ollama returned an unexpected response format."
         }), 502
 
 
